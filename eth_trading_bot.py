@@ -15,6 +15,8 @@ BASE_URL = "https://testnet.binancefuture.com"
 
 SYMBOL = "ETHUSDT"
 LEVERAGE = 20
+ATR_PERIOD = 1
+MULTIPLIER = 2.8
 
 def make_request(endpoint, params=None, method='GET'):
     try:
@@ -59,47 +61,66 @@ def make_request(endpoint, params=None, method='GET'):
         return None
 
 def calculate_chandelier(klines):
-    """Chandelier Exit stratejisi"""
-    highs = [float(k[2]) for k in klines]  # High prices
-    lows = [float(k[3]) for k in klines]   # Low prices
-    closes = [float(k[4]) for k in klines] # Close prices
+    """DOĞRU Chandelier Exit hesaplama"""
+    if not klines or len(klines) < 2:
+        return "HOLD", 0
     
-    current_high = highs[-1]
-    current_low = lows[-1]
-    current_close = closes[-1]
-    prev_close = closes[-2]
-    
-    # ATR Hesaplama (Period 1)
-    tr = max(
-        current_high - current_low,
-        abs(current_high - prev_close),
-        abs(current_low - prev_close)
-    )
-    atr = tr
-    
-    long_stop = max(highs) - atr * 2.8
-    short_stop = min(lows) + atr * 2.8
-    
-    print(f"🟢 Long Stop: {long_stop:.2f}")
-    print(f"🔴 Short Stop: {short_stop:.2f}")
-    print(f"🎯 Current Price: {current_close:.2f}")
-    
-    if current_close > long_stop:
-        return "BUY", current_close
-    elif current_close < short_stop:
-        return "SELL", current_close
-    else:
-        return "HOLD", current_close
+    try:
+        highs = [float(k[2]) for k in klines]  # High prices
+        lows = [float(k[3]) for k in klines]   # Low prices
+        closes = [float(k[4]) for k in klines] # Close prices
+        
+        current_high = highs[-1]
+        current_low = lows[-1]
+        current_close = closes[-1]
+        prev_close = closes[-2] if len(closes) > 1 else closes[0]
+        
+        print(f"📊 Veri Aralığı: {len(klines)} mum")
+        print(f"📈 En Yüksek: {max(highs):.2f}, En Düşük: {min(lows):.2f}")
+        print(f"🎯 Mevcut Kapanış: {current_close:.2f}")
+        
+        # ATR Hesaplama (Period 1)
+        tr = max(
+            current_high - current_low,
+            abs(current_high - prev_close),
+            abs(current_low - prev_close)
+        )
+        atr = tr
+        
+        print(f"📏 ATR: {atr:.2f}")
+        
+        # DOĞRU Chandelier Exit formülü
+        long_stop = max(highs) - (atr * MULTIPLIER)
+        short_stop = min(lows) + (atr * MULTIPLIER)
+        
+        print(f"🟢 Long Stop: {long_stop:.2f}")
+        print(f"🔴 Short Stop: {short_stop:.2f}")
+        print(f"🎯 Current Price: {current_close:.2f}")
+        
+        # Sinyal belirleme
+        if current_close > long_stop:
+            signal = "BUY"
+        elif current_close < short_stop:
+            signal = "SELL"
+        else:
+            signal = "HOLD"
+        
+        return signal, current_close
+        
+    except Exception as e:
+        print(f"💥 Chandelier hesaplama hatası: {e}")
+        return "HOLD", 0
 
 def execute_trade(signal, price, current_position):
     """Trading işlemini gerçekleştir"""
     balance_data = make_request('/fapi/v2/balance')
     usdt_balance = 0
     
-    for asset in balance_data:
-        if asset['asset'] == 'USDT':
-            usdt_balance = float(asset['balance'])
-            break
+    if balance_data:
+        for asset in balance_data:
+            if asset['asset'] == 'USDT':
+                usdt_balance = float(asset['balance'])
+                break
     
     if usdt_balance <= 0:
         print("❌ Yetersiz bakiye!")
@@ -109,7 +130,8 @@ def execute_trade(signal, price, current_position):
     quantity = (usdt_balance * 1.0) * LEVERAGE / price
     quantity = round(quantity, 3)
     
-    print(f"💰 Kullanılacak miktar: {quantity} ETH")
+    print(f"💰 Bakiye: {usdt_balance} USDT")
+    print(f"📦 Kullanılacak miktar: {quantity} ETH")
     
     if signal == "BUY" and current_position <= 0:
         print("🎯 BUY Sinyali - Long işlemi yapılıyor...")
@@ -117,12 +139,14 @@ def execute_trade(signal, price, current_position):
         if current_position < 0:
             # Short pozisyonu kapat
             print("🔻 Short pozisyon kapatılıyor...")
-            make_request('/fapi/v1/order', {
+            close_result = make_request('/fapi/v1/order', {
                 'symbol': SYMBOL,
                 'side': 'BUY',
                 'type': 'MARKET',
                 'quantity': abs(current_position)
             }, 'POST')
+            if close_result:
+                print("✅ Short pozisyon kapatıldı")
             time.sleep(1)
         
         # Long pozisyon aç
@@ -144,12 +168,14 @@ def execute_trade(signal, price, current_position):
         if current_position > 0:
             # Long pozisyonu kapat
             print("🔺 Long pozisyon kapatılıyor...")
-            make_request('/fapi/v1/order', {
+            close_result = make_request('/fapi/v1/order', {
                 'symbol': SYMBOL,
                 'side': 'SELL',
                 'type': 'MARKET',
                 'quantity': abs(current_position)
             }, 'POST')
+            if close_result:
+                print("✅ Long pozisyon kapatıldı")
             time.sleep(1)
         
         # Short pozisyon aç
@@ -166,14 +192,15 @@ def execute_trade(signal, price, current_position):
             print("❌ Short pozisyon açılamadı")
     
     else:
-        print("⚪ İşlem yapılmadı - Sinyal uygun değil")
+        print(f"⚪ İşlem yapılmadı - Sinyal: {signal}, Pozisyon: {current_position}")
 
 def main():
     print("\n" + "="*50)
     print("🤖 ETH/USDT TRADING BOT ÇALIŞIYOR")
     print("="*50)
+    print(f"🎯 Strateji: Chandelier Exit (ATR:{ATR_PERIOD}, Multiplier:{MULTIPLIER})")
     
-    # 1. Kaldıraç ayarla (bu sefer doğru signature ile)
+    # 1. Kaldıraç ayarla
     print("\n1️⃣ Kaldıraç ayarlanıyor...")
     leverage_result = make_request('/fapi/v1/leverage', {
         'symbol': SYMBOL,
@@ -182,6 +209,8 @@ def main():
     
     if leverage_result:
         print(f"⚡ Kaldıraç {LEVERAGE}x ayarlandı")
+    else:
+        print("❌ Kaldıraç ayarlanamadı - API Key hatası?")
     
     # 2. Mevcut pozisyonu kontrol et
     print("\n2️⃣ Pozisyon kontrol ediliyor...")
@@ -204,7 +233,7 @@ def main():
     klines = make_request('/fapi/v1/klines', {
         'symbol': SYMBOL,
         'interval': '1h',
-        'limit': 10
+        'limit': 22  # Daha fazla veri
     })
     
     if klines:
@@ -214,6 +243,8 @@ def main():
         # 4. Trading işlemini gerçekleştir
         print("\n4️⃣ Trading işlemi...")
         execute_trade(signal, current_price, current_position)
+    else:
+        print("❌ Mum verileri alınamadı")
     
     print("\n" + "="*50)
     print("✅ Bot çalışması tamamlandı!")
