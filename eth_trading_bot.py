@@ -4,30 +4,41 @@ import hmac
 import hashlib
 import requests
 from datetime import datetime
+import json
 
-print("=== 🚀 ETH TRADING BOT BAŞLATILDI ===")
+print("=== 🚀 ETH TRADING BOT - FIXED VERSION ===")
 print(f"⏰ Zaman: {datetime.now()}")
 
-# API Bilgileri
+# API Bilgileri - DEBUG MOD
 API_KEY = os.getenv('API_KEY')
 API_SECRET = os.getenv('API_SECRET')
 BASE_URL = "https://testnet.binancefuture.com"
 
-SYMBOL = "ETHUSDT"
-LEVERAGE = 20
+print(f"🔑 API_KEY: {API_KEY[:10]}..." if API_KEY else "❌ API_KEY YOK")
+print(f"🔐 API_SECRET: {API_SECRET[:10]}..." if API_SECRET else "❌ API_SECRET YOK")
 
-def make_request(endpoint, params=None, method='GET'):
+if not API_KEY or not API_SECRET:
+    print("💥 CRITICAL: API KEY veya SECRET bulunamadı!")
+    exit()
+
+SYMBOL = "ETHUSDT"
+
+def binance_request(endpoint, params=None, method='GET'):
+    """DÜZGÜN signature ile request"""
     try:
-        # Timestamp ve signature oluştur
+        # Timestamp
         timestamp = int(time.time() * 1000)
         
         if params is None:
             params = {}
         
         params['timestamp'] = timestamp
+        params['recvWindow'] = 5000
         
-        # Signature oluşturma
+        # Query string oluştur - SIRALI
         query_string = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
+        
+        # Signature - KESİN DOĞRU
         signature = hmac.new(
             API_SECRET.encode('utf-8'),
             query_string.encode('utf-8'),
@@ -36,180 +47,81 @@ def make_request(endpoint, params=None, method='GET'):
         
         params['signature'] = signature
         
-        # Header
-        headers = {'X-MBX-APIKEY': API_KEY}
+        # Headers
+        headers = {
+            'X-MBX-APIKEY': API_KEY,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
         
         # URL
         url = f"{BASE_URL}{endpoint}"
         
-        # Request gönder
+        print(f"🔗 {method} {endpoint}")
+        print(f"📝 Query: {query_string}")
+        print(f"🔄 Signature: {signature[:16]}...")
+        
+        # Request
         if method == 'GET':
-            response = requests.get(url, params=params, headers=headers)
+            response = requests.get(url, params=params, headers=headers, timeout=10)
         else:
-            response = requests.post(url, data=params, headers=headers)
+            response = requests.post(url, data=params, headers=headers, timeout=10)
+        
+        print(f"📡 Status: {response.status_code}")
         
         if response.status_code == 200:
-            return response.json()
+            result = response.json()
+            print(f"✅ Başarılı: {result}")
+            return result
         else:
             print(f"❌ Hata: {response.text}")
             return None
             
     except Exception as e:
-        print(f"💥 API Hatası: {e}")
+        print(f"💥 Request hatası: {e}")
         return None
-
-def calculate_chandelier_TEST(klines):
-    """TEST MOD: KESİN işlem yapsın diye"""
-    highs = [float(k[2]) for k in klines]
-    lows = [float(k[3]) for k in klines] 
-    closes = [float(k[4]) for k in klines]
-    
-    current_close = closes[-1]
-    
-    # TEST: Mevcut fiyatın ÇOK YAKININA stop koy
-    long_stop = current_close - 0.1  # 10 cent altı
-    short_stop = current_close + 0.1  # 10 cent üstü
-    
-    print("🎯 TEST MODU AKTİF!")
-    print(f"🟢 Long Stop: {long_stop:.2f}")
-    print(f"🔴 Short Stop: {short_stop:.2f}")
-    print(f"🎯 Current Price: {current_close:.2f}")
-    
-    # NORMAL mantık (fiyat > long_stop ise BUY)
-    if current_close > long_stop:
-        return "BUY", current_close
-    elif current_close < short_stop:
-        return "SELL", current_close
-    else:
-        return "HOLD", current_close
-
-def execute_trade(signal, price, current_position):
-    """Trading işlemini gerçekleştir"""
-    balance_data = make_request('/fapi/v2/balance')
-    usdt_balance = 0
-    
-    if balance_data:
-        for asset in balance_data:
-            if asset['asset'] == 'USDT':
-                usdt_balance = float(asset['balance'])
-                break
-    
-    if usdt_balance <= 0:
-        print("❌ Yetersiz bakiye!")
-        return
-    
-    # Miktar hesapla (%100 bakiye, 20x kaldıraç)
-    quantity = (usdt_balance * 1.0) * LEVERAGE / price
-    quantity = round(quantity, 3)
-    
-    print(f"💰 Bakiye: {usdt_balance} USDT")
-    print(f"📦 Kullanılacak miktar: {quantity} ETH")
-    
-    if signal == "BUY" and current_position <= 0:
-        print("🎯 BUY Sinyali - Long işlemi yapılıyor...")
-        
-        if current_position < 0:
-            # Short pozisyonu kapat
-            print("🔻 Short pozisyon kapatılıyor...")
-            close_result = make_request('/fapi/v1/order', {
-                'symbol': SYMBOL,
-                'side': 'BUY',
-                'type': 'MARKET',
-                'quantity': abs(current_position)
-            }, 'POST')
-            if close_result:
-                print("✅ Short pozisyon kapatıldı")
-            time.sleep(1)
-        
-        # Long pozisyon aç
-        result = make_request('/fapi/v1/order', {
-            'symbol': SYMBOL,
-            'side': 'BUY',
-            'type': 'MARKET',
-            'quantity': quantity
-        }, 'POST')
-        
-        if result:
-            print(f"✅ Long pozisyon açıldı: {quantity} ETH")
-            print(f"📊 Order Detay: {result}")
-        else:
-            print("❌ Long pozisyon açılamadı")
-    
-    elif signal == "SELL" and current_position >= 0:
-        print("🎯 SELL Sinyali - Short işlemi yapılıyor...")
-        
-        if current_position > 0:
-            # Long pozisyonu kapat
-            print("🔺 Long pozisyon kapatılıyor...")
-            close_result = make_request('/fapi/v1/order', {
-                'symbol': SYMBOL,
-                'side': 'SELL',
-                'type': 'MARKET',
-                'quantity': abs(current_position)
-            }, 'POST')
-            if close_result:
-                print("✅ Long pozisyon kapatıldı")
-            time.sleep(1)
-        
-        # Short pozisyon aç
-        result = make_request('/fapi/v1/order', {
-            'symbol': SYMBOL,
-            'side': 'SELL',
-            'type': 'MARKET',
-            'quantity': quantity
-        }, 'POST')
-        
-        if result:
-            print(f"✅ Short pozisyon açıldı: {quantity} ETH")
-            print(f"📊 Order Detay: {result}")
-        else:
-            print("❌ Short pozisyon açılamadı")
-    
-    else:
-        print(f"⚪ İşlem yapılmadı - Sinyal: {signal}, Pozisyon: {current_position}")
 
 def main():
     print("\n" + "="*50)
-    print("🤖 ETH/USDT TRADING BOT - TEST MODU")
+    print("🎯 BOT TEST BAŞLIYOR - ADIM ADIM")
     print("="*50)
-    print("🎯 BU veya SELL yapacak şekilde ayarlandı!")
     
-    # 1. Mevcut pozisyonu kontrol et
-    print("\n1️⃣ Pozisyon kontrol ediliyor...")
-    positions = make_request('/fapi/v2/positionRisk', {'symbol': SYMBOL})
-    current_position = 0
+    # 1. SERVER TIME TEST (signature gerekmez)
+    print("\n1️⃣ Server Time Test...")
+    time_url = "https://testnet.binancefuture.com/fapi/v1/time"
+    time_response = requests.get(time_url)
+    if time_response.status_code == 200:
+        print("✅ Binance bağlantısı çalışıyor")
+    else:
+        print("❌ Binance bağlantı hatası")
+        return
     
-    if positions:
-        for pos in positions:
-            amount = float(pos.get('positionAmt', 0))
-            if amount != 0:
-                current_position = amount
-                print(f"📊 Mevcut Pozisyon: {amount} ETH")
+    # 2. BAKİYE KONTROLÜ
+    print("\n2️⃣ Bakiye Kontrolü...")
+    balance = binance_request('/fapi/v2/balance')
+    if balance:
+        for asset in balance:
+            if asset['asset'] == 'USDT':
+                usdt_balance = float(asset['balance'])
+                print(f"💰 Bakiye: {usdt_balance} USDT")
                 break
     
-    if current_position == 0:
-        print("📭 Açık pozisyon yok")
-    
-    # 2. Mum verilerini al ve TEST sinyali hesapla
-    print("\n2️⃣ TEST Sinyali hesaplanıyor...")
-    klines = make_request('/fapi/v1/klines', {
+    # 3. SADECE BUY ORDER DENEYELİM
+    print("\n3️⃣ KÜÇÜK BUY ORDER TEST...")
+    small_buy = binance_request('/fapi/v1/order', {
         'symbol': SYMBOL,
-        'interval': '1h',
-        'limit': 10
-    })
+        'side': 'BUY',
+        'type': 'MARKET',
+        'quantity': 1  # ÇOK KÜÇÜK miktar
+    }, 'POST')
     
-    if klines:
-        signal, current_price = calculate_chandelier_TEST(klines)
-        print(f"🎯 Sinyal: {signal}")
-        
-        # 3. Trading işlemini gerçekleştir
-        print("\n3️⃣ TRADING İŞLEMİ BAŞLIYOR...")
-        execute_trade(signal, current_price, current_position)
+    if small_buy:
+        print("🎉 🎉 🎉 BAŞARILI! ORDER ÇALIŞTI! 🎉 🎉 🎉")
+        print(f"Order Detay: {small_buy}")
     else:
-        print("❌ Mum verileri alınamadı")
+        print("💥 Order başarısız - API Secret hatalı!")
     
     print("\n" + "="*50)
-    print("✅ Bot çalışması tamamlandı!")
+    print("✅ Test tamamlandı!")
     print("="*50)
 
 if __name__ == "__main__":
