@@ -12,7 +12,7 @@ print(f"⏰ Zaman: {datetime.now()}")
 # API Bilgileri - DEBUG MOD
 API_KEY = os.getenv('API_KEY')
 API_SECRET = os.getenv('API_SECRET')
-BASE_URL = "https://testnet.binance.com"
+BASE_URL = "https://demo.binance.com"
 
 print(f"🔑 API_KEY: {API_KEY[:10]}..." if API_KEY else "❌ API_KEY YOK")
 print(f"🔐 API_SECRET: {API_SECRET[:10]}..." if API_SECRET else "❌ API_SECRET YOK")
