@@ -4,30 +4,7 @@ import hmac
 import hashlib
 import requests
 from datetime import datetime
-# TEST İÇİN - normal kodun üstüne ekle
-def calculate_chandelier(klines):
-    """TEST MOD: Mevcut fiyata yakın stoplar"""
-    highs = [float(k[2]) for k in klines]
-    lows = [float(k[3]) for k in klines] 
-    closes = [float(k[4]) for k in klines]
-    
-    current_close = closes[-1]
-    
-    # TEST: Mevcut fiyatın hemen üstü/altı
-    long_stop = current_close - 1  # ALTI
-    short_stop = current_close + 1  # ÜSTÜ
-    
-    print(f"🟢 Long Stop: {long_stop:.2f}")
-    print(f"🔴 Short Stop: {short_stop:.2f}")
-    print(f"🎯 Current Price: {current_close:.2f}")
-    
-    # TERS mantık (test için)
-    if current_close > short_stop:
-        return "BUY", current_close
-    elif current_close < long_stop:
-        return "SELL", current_close
-    else:
-        return "HOLD", current_close
+
 print("=== 🚀 ETH TRADING BOT BAŞLATILDI ===")
 print(f"⏰ Zaman: {datetime.now()}")
 
@@ -38,8 +15,6 @@ BASE_URL = "https://testnet.binancefuture.com"
 
 SYMBOL = "ETHUSDT"
 LEVERAGE = 20
-ATR_PERIOD = 1
-MULTIPLIER = 2.8
 
 def make_request(endpoint, params=None, method='GET'):
     try:
@@ -83,56 +58,30 @@ def make_request(endpoint, params=None, method='GET'):
         print(f"💥 API Hatası: {e}")
         return None
 
-def calculate_chandelier(klines):
-    """DOĞRU Chandelier Exit hesaplama"""
-    if not klines or len(klines) < 2:
-        return "HOLD", 0
+def calculate_chandelier_TEST(klines):
+    """TEST MOD: KESİN işlem yapsın diye"""
+    highs = [float(k[2]) for k in klines]
+    lows = [float(k[3]) for k in klines] 
+    closes = [float(k[4]) for k in klines]
     
-    try:
-        highs = [float(k[2]) for k in klines]  # High prices
-        lows = [float(k[3]) for k in klines]   # Low prices
-        closes = [float(k[4]) for k in klines] # Close prices
-        
-        current_high = highs[-1]
-        current_low = lows[-1]
-        current_close = closes[-1]
-        prev_close = closes[-2] if len(closes) > 1 else closes[0]
-        
-        print(f"📊 Veri Aralığı: {len(klines)} mum")
-        print(f"📈 En Yüksek: {max(highs):.2f}, En Düşük: {min(lows):.2f}")
-        print(f"🎯 Mevcut Kapanış: {current_close:.2f}")
-        
-        # ATR Hesaplama (Period 1)
-        tr = max(
-            current_high - current_low,
-            abs(current_high - prev_close),
-            abs(current_low - prev_close)
-        )
-        atr = tr
-        
-        print(f"📏 ATR: {atr:.2f}")
-        
-        # DOĞRU Chandelier Exit formülü
-        long_stop = max(highs) - (atr * MULTIPLIER)
-        short_stop = min(lows) + (atr * MULTIPLIER)
-        
-        print(f"🟢 Long Stop: {long_stop:.2f}")
-        print(f"🔴 Short Stop: {short_stop:.2f}")
-        print(f"🎯 Current Price: {current_close:.2f}")
-        
-        # Sinyal belirleme
-        if current_close > long_stop:
-            signal = "BUY"
-        elif current_close < short_stop:
-            signal = "SELL"
-        else:
-            signal = "HOLD"
-        
-        return signal, current_close
-        
-    except Exception as e:
-        print(f"💥 Chandelier hesaplama hatası: {e}")
-        return "HOLD", 0
+    current_close = closes[-1]
+    
+    # TEST: Mevcut fiyatın ÇOK YAKININA stop koy
+    long_stop = current_close - 0.1  # 10 cent altı
+    short_stop = current_close + 0.1  # 10 cent üstü
+    
+    print("🎯 TEST MODU AKTİF!")
+    print(f"🟢 Long Stop: {long_stop:.2f}")
+    print(f"🔴 Short Stop: {short_stop:.2f}")
+    print(f"🎯 Current Price: {current_close:.2f}")
+    
+    # NORMAL mantık (fiyat > long_stop ise BUY)
+    if current_close > long_stop:
+        return "BUY", current_close
+    elif current_close < short_stop:
+        return "SELL", current_close
+    else:
+        return "HOLD", current_close
 
 def execute_trade(signal, price, current_position):
     """Trading işlemini gerçekleştir"""
@@ -182,6 +131,7 @@ def execute_trade(signal, price, current_position):
         
         if result:
             print(f"✅ Long pozisyon açıldı: {quantity} ETH")
+            print(f"📊 Order Detay: {result}")
         else:
             print("❌ Long pozisyon açılamadı")
     
@@ -211,6 +161,7 @@ def execute_trade(signal, price, current_position):
         
         if result:
             print(f"✅ Short pozisyon açıldı: {quantity} ETH")
+            print(f"📊 Order Detay: {result}")
         else:
             print("❌ Short pozisyon açılamadı")
     
@@ -219,24 +170,12 @@ def execute_trade(signal, price, current_position):
 
 def main():
     print("\n" + "="*50)
-    print("🤖 ETH/USDT TRADING BOT ÇALIŞIYOR")
+    print("🤖 ETH/USDT TRADING BOT - TEST MODU")
     print("="*50)
-    print(f"🎯 Strateji: Chandelier Exit (ATR:{ATR_PERIOD}, Multiplier:{MULTIPLIER})")
+    print("🎯 BU veya SELL yapacak şekilde ayarlandı!")
     
-    # 1. Kaldıraç ayarla
-    print("\n1️⃣ Kaldıraç ayarlanıyor...")
-    leverage_result = make_request('/fapi/v1/leverage', {
-        'symbol': SYMBOL,
-        'leverage': LEVERAGE
-    }, 'POST')
-    
-    if leverage_result:
-        print(f"⚡ Kaldıraç {LEVERAGE}x ayarlandı")
-    else:
-        print("❌ Kaldıraç ayarlanamadı - API Key hatası?")
-    
-    # 2. Mevcut pozisyonu kontrol et
-    print("\n2️⃣ Pozisyon kontrol ediliyor...")
+    # 1. Mevcut pozisyonu kontrol et
+    print("\n1️⃣ Pozisyon kontrol ediliyor...")
     positions = make_request('/fapi/v2/positionRisk', {'symbol': SYMBOL})
     current_position = 0
     
@@ -251,20 +190,20 @@ def main():
     if current_position == 0:
         print("📭 Açık pozisyon yok")
     
-    # 3. Mum verilerini al ve sinyal hesapla
-    print("\n3️⃣ Sinyal hesaplanıyor...")
+    # 2. Mum verilerini al ve TEST sinyali hesapla
+    print("\n2️⃣ TEST Sinyali hesaplanıyor...")
     klines = make_request('/fapi/v1/klines', {
         'symbol': SYMBOL,
         'interval': '1h',
-        'limit': 22  # Daha fazla veri
+        'limit': 10
     })
     
     if klines:
-        signal, current_price = calculate_chandelier(klines)
+        signal, current_price = calculate_chandelier_TEST(klines)
         print(f"🎯 Sinyal: {signal}")
         
-        # 4. Trading işlemini gerçekleştir
-        print("\n4️⃣ Trading işlemi...")
+        # 3. Trading işlemini gerçekleştir
+        print("\n3️⃣ TRADING İŞLEMİ BAŞLIYOR...")
         execute_trade(signal, current_price, current_position)
     else:
         print("❌ Mum verileri alınamadı")
