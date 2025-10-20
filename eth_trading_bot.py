@@ -4,7 +4,30 @@ import hmac
 import hashlib
 import requests
 from datetime import datetime
-
+# TEST İÇİN - normal kodun üstüne ekle
+def calculate_chandelier(klines):
+    """TEST MOD: Mevcut fiyata yakın stoplar"""
+    highs = [float(k[2]) for k in klines]
+    lows = [float(k[3]) for k in klines] 
+    closes = [float(k[4]) for k in klines]
+    
+    current_close = closes[-1]
+    
+    # TEST: Mevcut fiyatın hemen üstü/altı
+    long_stop = current_close - 1  # ALTI
+    short_stop = current_close + 1  # ÜSTÜ
+    
+    print(f"🟢 Long Stop: {long_stop:.2f}")
+    print(f"🔴 Short Stop: {short_stop:.2f}")
+    print(f"🎯 Current Price: {current_close:.2f}")
+    
+    # TERS mantık (test için)
+    if current_close > short_stop:
+        return "BUY", current_close
+    elif current_close < long_stop:
+        return "SELL", current_close
+    else:
+        return "HOLD", current_close
 print("=== 🚀 ETH TRADING BOT BAŞLATILDI ===")
 print(f"⏰ Zaman: {datetime.now()}")
 
