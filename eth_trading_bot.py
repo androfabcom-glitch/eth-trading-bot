@@ -99,7 +99,7 @@ def main():
         'symbol': SYMBOL,
         'side': 'BUY',
         'type': 'MARKET',
-        'quantity': 0.001
+        'quantity': 5
     }, 'POST')
     
     if small_buy:
